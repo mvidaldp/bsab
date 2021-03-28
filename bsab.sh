@@ -214,7 +214,7 @@ while [[ ${input} != "0" ]]; do
   (($(echo "${total} > ${INVESTMENT}" | bc -l))) && totalc=green || totalc=red
   to_print="${to_print}${BOLD}${line}\n"
   to_print="${to_print}TOTAL${TAB}${TAB}${TAB}${TAB}${TAB}${TAB}${TAB}${UBOLD}${colors[${totalc}]}€$(printf "%.2f" "${total}")${RESET}"
-  height=$((($(awk -F"n" '{print NF-1}' <<<"${to_print}") + 5)))
+  height=$((($(awk -F"n" '{print NF-1}' <<<"${to_print}") + 3)))
   clear
   dialog \
     --colors \
@@ -222,9 +222,7 @@ while [[ ${input} != "0" ]]; do
     --no-mouse \
     --backtitle "Binance Spot Assets Balance" \
     --title "Total Balance" \
-    --ok-label "QUIT" \
-    --msgbox "${to_print}" ${height} 0
-  input=$?
+    --infobox "${to_print}" ${height} 0
 done
 
 echo # to get a newline after quitting
