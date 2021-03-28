@@ -33,7 +33,6 @@
 # ---------------------------------------------------------------------------
 
 # TODO:
-# - update values without clear and generating new dialog (if possible)
 # - order by coin (alphabetically)
 # - order by quantity, price, %change or alloc%/value
 # - comment whole code
@@ -121,10 +120,7 @@ for cc in "${!cs[@]}"; do
   colors[$ck]="${PREFIX}${cc}"
 done
 
-while [[ ${input} != "q" ]] && [[ ${input} != "Q" ]] && [[ ${input} != "ESC" ]]; do
-  # too slow key read, fix. ESC doesn't work
-  # -n 1 to get one character at a time, -t 0.1 to set a timeout
-  read -r -t 0.5 -N 1 input
+while [[ ${input} != "0" ]]; do
 
   querystr="timestamp=$((($(date +%s) * 1000)))"
   sig=$(echo -n "$querystr" | openssl dgst -sha256 -hmac "${APISECRET}" | cut -c 10-)
@@ -218,7 +214,7 @@ while [[ ${input} != "q" ]] && [[ ${input} != "Q" ]] && [[ ${input} != "ESC" ]];
   (($(echo "${total} > ${INVESTMENT}" | bc -l))) && totalc=green || totalc=red
   to_print="${to_print}${BOLD}${line}\n"
   to_print="${to_print}TOTAL${TAB}${TAB}${TAB}${TAB}${TAB}${TAB}${TAB}${UBOLD}${colors[${totalc}]}€$(printf "%.2f" "${total}")${RESET}"
-  height=$((($(awk -F"n" '{print NF-1}' <<<"${to_print}") + 3)))
+  height=$((($(awk -F"n" '{print NF-1}' <<<"${to_print}") + 5)))
   clear
   dialog \
     --colors \
@@ -226,7 +222,9 @@ while [[ ${input} != "q" ]] && [[ ${input} != "Q" ]] && [[ ${input} != "ESC" ]];
     --no-mouse \
     --backtitle "Binance Spot Assets Balance" \
     --title "Total Balance" \
-    --infobox "${to_print}" ${height} 0
+    --ok-label "QUIT" \
+    --msgbox "${to_print}" ${height} 0
+  input=$?
 done
 
 echo # to get a newline after quitting
