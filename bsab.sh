@@ -262,16 +262,25 @@ while [[ "x${input}" = "x" ]]; do
   declare -A change_7
   declare -A change_14
   declare -A change_30
+  declare -A change_60
+  declare -A change_200
+  declare -A change_year
   declare -A changecs_7
   declare -A changecs_14
   declare -A changecs_30
+  declare -A changecs_60
+  declare -A changecs_200
+  declare -A changecs_year
   week_max=0
   biweek_max=0
   month_max=0
+  bimonth_max=0
+  hy_max=0
+  year_max=0
   for symbol in "${symbols[@]}"; do
     id=${cg_ids[${symbol}]}
     querystr="tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false"
-    mapfile -t chpercs <<<"$(curl -s -X GET -H "accept: application/json" "${CG_API_URL}/coins/${id}?${querystr}" | jq -r '.market_data | [.price_change_percentage_7d, .price_change_percentage_14d, .price_change_percentage_30d] | .[]')"
+    mapfile -t chpercs <<<"$(curl -s -X GET -H "accept: application/json" "${CG_API_URL}/coins/${id}?${querystr}" | jq -r '.market_data | [.price_change_percentage_7d, .price_change_percentage_14d, .price_change_percentage_30d, .price_change_percentage_60d, .price_change_percentage_200d, .price_change_percentage_1y] | .[]')"
     # check sign and colors
     ch7=$(printf "%.2f" "${chpercs[0]}")
     if (($(echo "${ch7} < 0" | bc -l))); then
@@ -303,6 +312,36 @@ while [[ "x${input}" = "x" ]]; do
     fi
     changecs_30[${symbol}]=${color}
     ch30="${sign}${ch30}"
+    ch60=$(printf "%.2f" "${chpercs[3]}")
+    if (($(echo "${ch60} < 0" | bc -l))); then
+      color=${colors[red]}
+      sign=""
+    else
+      color=${colors[green]}
+      sign="+"
+    fi
+    changecs_60[${symbol}]=${color}
+    ch60="${sign}${ch60}"
+    ch200=$(printf "%.2f" "${chpercs[4]}")
+    if (($(echo "${ch200} < 0" | bc -l))); then
+      color=${colors[red]}
+      sign=""
+    else
+      color=${colors[green]}
+      sign="+"
+    fi
+    changecs_200[${symbol}]=${color}
+    ch200="${sign}${ch200}"
+    chyear=$(printf "%.2f" "${chpercs[5]}")
+    if (($(echo "${chyear} < 0" | bc -l))); then
+      color=${colors[red]}
+      sign=""
+    else
+      color=${colors[green]}
+      sign="+"
+    fi
+    changecs_year[${symbol}]=${color}
+    chyear="${sign}${chyear}"
     # check lengths
     max=${#ch7}
     if ((max > week_max)); then
@@ -316,9 +355,24 @@ while [[ "x${input}" = "x" ]]; do
     if ((max > month_max)); then
       month_max=${max}
     fi
+    max=${#ch60}
+    if ((max > bimonth_max)); then
+      bimonth_max=${max}
+    fi
+    max=${#ch200}
+    if ((max > hy_max)); then
+      hy_max=${max}
+    fi
+    max=${#chyear}
+    if ((max > year_max)); then
+      year_max=${max}
+    fi
     change_7[${symbol}]=${ch7}
     change_14[${symbol}]=${ch14}
     change_30[${symbol}]=${ch30}
+    change_60[${symbol}]=${ch60}
+    change_200[${symbol}]=${ch200}
+    change_year[${symbol}]=${chyear}
   done
 
   declare -A prices
@@ -338,6 +392,7 @@ while [[ "x${input}" = "x" ]]; do
   # printf "%s\n" "${coins[@]}" | parallel curl -s -H "X-MBX-APIKEY: ${APIKEY}" "${B_URL}/ticker/24hr?symbol={}${BCURRENCY}" | jq '. | [(.lastPrice|tonumber), (.priceChangePercent|tonumber)] | .[]'
 
   for coin in "${coins[@]}"; do
+    # TODO: find out and fix USDT/selected currency 24h change %
     if [[ "${coin}" == "${BCURRENCY}" ]]; then
       price=$(echo "1.0 / ${equiv}" | bc -l)
       symbol=${cg_ids[${coin}]}
@@ -410,20 +465,23 @@ while [[ "x${input}" = "x" ]]; do
   done
 
   # TODO: find out (and fix) why headers need extra space/s
-  COIN_LBL=$(printf "%-*s" "4" "COIN")
-  CHANGE_LBL=$(printf "%*s" "${change_max}" "%24H↑↓")
-  CH7_LBL=$(printf "%*s" "${week_max}" "  %7D↑↓")
-  CH14_LBL=$(printf "%*s" "${biweek_max}" " %14D↑↓")
-  CH30_LBL=$(printf "%*s" "${month_max}" " %30D↑↓")
-  PRICE_LBL=$(printf "%*s" "${price_max}" "${CURRENCY}")
-  MCAP_LBL=$(printf "%*s" "${mcap_max}" "MCAP")
-  MCAPP_LBL=$(printf "%*s" "7" "%MCAP")
-  QTY_LBL=$(printf "%*s" "${qty_max}" "QTY")
-  ALLOC_LBL=$(printf "%*s" "6" "%ALLOC")
-  TOTAL_LBL=$(printf "%*s" "${total_l}" "TOTAL")
-  header_raw="${COIN_LBL}${T}${CHANGE_LBL}${T}${CH7_LBL}${T}${CH14_LBL}${T}${CH30_LBL}${T}${PRICE_LBL}${T}${MCAP_LBL}${T}${MCAPP_LBL}${T}${QTY_LBL}${T}${ALLOC_LBL}${T}${TOTAL_LBL}"
-  header="${REVERSE}${BOLD}${COIN_LBL}${T}${CHANGE_LBL}${T}${CH7_LBL}${T}${CH14_LBL}${T}${CH30_LBL}${T}${PRICE_LBL}${T}${MCAP_LBL}${T}${MCAPP_LBL}${T}${QTY_LBL}${T}${ALLOC_LBL}${T}${TOTAL_LBL}${UBOLD}${UREVERSE}\n\n"
-  to_print="${header}"
+  COIN=$(printf "%-*s" "4" "COIN")
+  CHANGE=$(printf "%*s" "${change_max}" "%24H↑↓")
+  CHW=$(printf "%*s" "${week_max}" "  %7D↑↓")
+  CHBW=$(printf "%*s" "${biweek_max}" " %14D↑↓")
+  CHM=$(printf "%*s" "${month_max}" " %30D↑↓")
+  CHBM=$(printf "%*s" "${bimonth_max}" "  %2M↑↓")
+  CHHY=$(printf "%*s" "${hy_max}" "   %6M↑↓")
+  YEAR=$(printf "%*s" "${year_max}" "   %1Y↑↓")
+  PRICE=$(printf "%*s" "${price_max}" "${CURRENCY}")
+  MCAP=$(printf "%*s" "${mcap_max}" "MCAP")
+  MCAPP=$(printf "%*s" "7" "%MCAP")
+  QTY=$(printf "%*s" "${qty_max}" "QTY")
+  ALLOC=$(printf "%*s" "6" "%ALLOC")
+  TOTAL=$(printf "%*s" "${total_l}" "TOTAL")
+  header_raw="${COIN}${T}${CHANGE}${T}${CHW}${T}${CHBW}${T}${CHM}${T}${CHBM}${T}${CHHY}${T}${YEAR}${T}${PRICE}${T}${MCAP}${T}${MCAPP}${T}${QTY}${T}${ALLOC}${T}${TOTAL}"
+  header="${REVERSE}${BOLD}${header_raw}${UBOLD}${UREVERSE}"
+  to_print="${header}\n\n"
   width=${#header_raw}
 
   # sort by selected column and order (asc/desc)
@@ -487,11 +545,17 @@ while [[ "x${input}" = "x" ]]; do
     changec7=${changecs_7[${coin}]}
     changec14=${changecs_14[${coin}]}
     changec30=${changecs_30[${coin}]}
+    changec60=${changecs_60[${coin}]}
+    changechy=${changecs_200[${coin}]}
+    changecy=${changecs_year[${coin}]}
     pricec=${pricescs[${coin}]}
     change=$(printf "%*s" "${change_max}" "${changes[${coin}]}")
     change7=$(printf "%*s" "${week_max}" "${change_7[${coin}]}")
     change14=$(printf "%*s" "${biweek_max}" "${change_14[${coin}]}")
     change30=$(printf "%*s" "${month_max}" "${change_30[${coin}]}")
+    change60=$(printf "%*s" "${bimonth_max}" "${change_60[${coin}]}")
+    changehy=$(printf "%*s" "${hy_max}" "${change_200[${coin}]}")
+    changey=$(printf "%*s" "${year_max}" "${change_year[${coin}]}")
     price=$(printf "%*s" "${price_max}" "${prices[${coin}]}")
     mcap=$(printf "%*s" "${mcap_max}" "${mcaps[${coin}]}")
     mcapp=$(printf "%*s" "7" "${mcaps_perc[${coin}]}")
@@ -499,8 +563,8 @@ while [[ "x${input}" = "x" ]]; do
     perc=$(printf "%*s" "6" "${percs[${coin}]}")
     value=$(printf "%*s" "${total_l}" "${values[${coin}]}")
     # fill out row with values
-    raw_row="${asset}${T}${change}${T}${change7}${T}${change14}${T}${change30}${T}${price}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
-    row="${asset}${T}${changec}${change}${RESET}${T}${changec7}${change7}${RESET}${T}${changec14}${change14}${RESET}${T}${changec30}${change30}${RESET}${T}${pricec}${price}${RESET}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
+    raw_row="${asset}${T}${change}${T}${change7}${T}${change14}${T}${change30}${T}${change60}${T}${changehy}${T}${changey}${T}${price}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
+    row="${asset}${T}${changec}${change}${RESET}${T}${changec7}${change7}${RESET}${T}${changec14}${change14}${RESET}${T}${changec30}${change30}${RESET}${T}${changec60}${change60}${RESET}${T}${changechy}${changehy}${RESET}${T}${changecy}${changey}${RESET}${T}${pricec}${price}${RESET}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
     # row=$(echo "${row}" | column -t)
     # get row length, store the longest number of characters
     charnum=${#raw_row}
