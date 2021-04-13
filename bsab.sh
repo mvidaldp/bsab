@@ -167,7 +167,7 @@ UREVERSE="${PREFIX}R" # undo bg/fg text colors
 # uunderline="${PREFIX}U" # undo underline text
 RESET="${PREFIX}n" # RESET style to default/normal
 # T=$(echo -e '\t')
-T="    "
+T="  "
 # color keys
 cs=(black red green yellow blue magenta cyan white)
 declare -A colors # associative array (dict)
@@ -240,7 +240,8 @@ while [[ "x${input}" = "x" ]]; do
   for symbol in "${symbols[@]}"; do
     id=${cg_ids[${symbol}]}
     mcap=$(echo "${cg_mc}" | jq -r --arg id "$id" 'to_entries[] | select(.key==$id) | .value.eur_market_cap')
-    mcap=$(printf "%'d" "${mcap%%.*}")
+    mcap=$(echo "${mcap} / 1000000" | bc -l)
+    mcap=$(printf "%'dM" "${mcap%%.*}")
     max=${#mcap}
     if ((max > mcap_max)); then
       mcap_max=${max}
@@ -376,11 +377,15 @@ while [[ "x${input}" = "x" ]]; do
   done
 
   declare -A prices
+  declare -A lows
+  declare -A highs
   declare -A changes
   declare -A changes_raw
   declare -A changecs
   declare -A pricescs
   price_max=0
+  low_max=0
+  high_max=0
   change_max=0
 
   # TODO: store as gist and remove
@@ -392,7 +397,7 @@ while [[ "x${input}" = "x" ]]; do
   # printf "%s\n" "${coins[@]}" | parallel curl -s -H "X-MBX-APIKEY: ${APIKEY}" "${B_URL}/ticker/24hr?symbol={}${BCURRENCY}" | jq '. | [(.lastPrice|tonumber), (.priceChangePercent|tonumber)] | .[]'
 
   for coin in "${coins[@]}"; do
-    # TODO: find out and fix USDT/selected currency 24h change %
+    # TODO: find out and fix USDT/selected currency changes %, low and high
     if [[ "${coin}" == "${BCURRENCY}" ]]; then
       price=$(echo "1.0 / ${equiv}" | bc -l)
       symbol=${cg_ids[${coin}]}
@@ -401,8 +406,12 @@ while [[ "x${input}" = "x" ]]; do
     else
       symbol=${coin}${BCURRENCY}
       querystr="symbol=${symbol}"
-      mapfile -t pricper <<<"$(curl -s -H "X-MBX-APIKEY: ${APIKEY}" "${B_URL}/ticker/24hr?${querystr}" | jq '. | [(.lastPrice|tonumber), (.priceChangePercent|tonumber)] | .[]')"
+      mapfile -t pricper <<<"$(curl -s -H "X-MBX-APIKEY: ${APIKEY}" "${B_URL}/ticker/24hr?${querystr}" | jq '. | [(.lastPrice|tonumber), (.priceChangePercent|tonumber), (.lowPrice|tonumber), (.highPrice|tonumber)] | .[]')"
       price=$(printf "%.8f" "${pricper[0]}")
+      low=$(echo "${pricper[2]} / ${equiv}" | bc -l)
+      low=$(printf "%.4f" "${low}")
+      high=$(echo "${pricper[3]} / ${equiv}" | bc -l)
+      high=$(printf "%.4f" "${high}")
       price=$(echo "${price} / ${equiv}" | bc -l)
     fi
     price=$(printf "%.8f" "${price}")
@@ -436,7 +445,17 @@ while [[ "x${input}" = "x" ]]; do
     if ((max > change_max)); then
       change_max=${max}
     fi
+    max=${#low}
+    if ((max > low_max)); then
+      low_max=${max}
+    fi
+    max=${#high}
+    if ((max > high_max)); then
+      high_max=${max}
+    fi
     prices[${coin}]=${price}
+    lows[${coin}]=${low}
+    highs[${coin}]=${high}
     pricescs[${coin}]=${colorp}
     changecs[${coin}]=${colorc}
     changes[${coin}]=${change}
@@ -473,13 +492,15 @@ while [[ "x${input}" = "x" ]]; do
   CHBM=$(printf "%*s" "${bimonth_max}" "  %2M↑↓")
   CHHY=$(printf "%*s" "${hy_max}" "   %6M↑↓")
   YEAR=$(printf "%*s" "${year_max}" "   %1Y↑↓")
-  PRICE=$(printf "%*s" "${price_max}" "${CURRENCY}")
+  PRICE=$(printf "%*s" "$((price_max - 4))" "${CURRENCY}")
+  LOW=$(printf "%*s" "${low_max}" "LOW")
+  HIGH=$(printf "%*s" "${high_max}" "HIGH")
   MCAP=$(printf "%*s" "${mcap_max}" "MCAP")
   MCAPP=$(printf "%*s" "7" "%MCAP")
-  QTY=$(printf "%*s" "${qty_max}" "QTY")
+  QTY=$(printf "%*s" "$((qty_max - 4))" "QTY")
   ALLOC=$(printf "%*s" "6" "%ALLOC")
   TOTAL=$(printf "%*s" "${total_l}" "TOTAL")
-  header_raw="${COIN}${T}${CHANGE}${T}${CHW}${T}${CHBW}${T}${CHM}${T}${CHBM}${T}${CHHY}${T}${YEAR}${T}${PRICE}${T}${MCAP}${T}${MCAPP}${T}${QTY}${T}${ALLOC}${T}${TOTAL}"
+  header_raw="${COIN}${T}${CHANGE}${T}${CHW}${T}${CHBW}${T}${CHM}${T}${CHBM}${T}${CHHY}${T}${YEAR}${T}${PRICE}${T}${LOW}${T}${HIGH}${T}${MCAP}${T}${MCAPP}${T}${QTY}${T}${ALLOC}${T}${TOTAL}"
   header="${REVERSE}${BOLD}${header_raw}${UBOLD}${UREVERSE}"
   to_print="${header}\n\n"
   width=${#header_raw}
@@ -556,15 +577,19 @@ while [[ "x${input}" = "x" ]]; do
     change60=$(printf "%*s" "${bimonth_max}" "${change_60[${coin}]}")
     changehy=$(printf "%*s" "${hy_max}" "${change_200[${coin}]}")
     changey=$(printf "%*s" "${year_max}" "${change_year[${coin}]}")
-    price=$(printf "%*s" "${price_max}" "${prices[${coin}]}")
+    price=$(printf "%.4f" "${prices[${coin}]}")
+    price=$(printf "%*s" "$((price_max - 4))" "${price}")
+    low=$(printf "%*s" "${low_max}" "${lows[${coin}]}")
+    high=$(printf "%*s" "${high_max}" "${highs[${coin}]}")
     mcap=$(printf "%*s" "${mcap_max}" "${mcaps[${coin}]}")
     mcapp=$(printf "%*s" "7" "${mcaps_perc[${coin}]}")
-    qty=$(printf "%*s" "${qty_max}" "${qtys[${coin}]}")
+    qty=$(printf "%.4f" "${qtys[${coin}]}")
+    qty=$(printf "%*s" "$((qty_max - 4))" "${qty}")
     perc=$(printf "%*s" "6" "${percs[${coin}]}")
     value=$(printf "%*s" "${total_l}" "${values[${coin}]}")
     # fill out row with values
-    raw_row="${asset}${T}${change}${T}${change7}${T}${change14}${T}${change30}${T}${change60}${T}${changehy}${T}${changey}${T}${price}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
-    row="${asset}${T}${changec}${change}${RESET}${T}${changec7}${change7}${RESET}${T}${changec14}${change14}${RESET}${T}${changec30}${change30}${RESET}${T}${changec60}${change60}${RESET}${T}${changechy}${changehy}${RESET}${T}${changecy}${changey}${RESET}${T}${pricec}${price}${RESET}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
+    raw_row="${asset}${T}${change}${T}${change7}${T}${change14}${T}${change30}${T}${change60}${T}${changehy}${T}${changey}${T}${price}${T}${low}${T}${high}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
+    row="${asset}${T}${changec}${change}${RESET}${T}${changec7}${change7}${RESET}${T}${changec14}${change14}${RESET}${T}${changec30}${change30}${RESET}${T}${changec60}${change60}${RESET}${T}${changechy}${changehy}${RESET}${T}${changecy}${changey}${RESET}${T}${pricec}${price}${RESET}${T}${low}${T}${high}${T}${mcap}${T}${mcapp}${T}${qty}${T}${perc}${T}${value}"
     # row=$(echo "${row}" | column -t)
     # get row length, store the longest number of characters
     charnum=${#raw_row}
